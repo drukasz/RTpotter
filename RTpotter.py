@@ -15,9 +15,9 @@
 #along with this program.  If not, see <http://www.gnu.org/licenses/>
 
 ##Define input parameters: input dicom filename, name of the contour sequence to be converted and name of the output STL file
-InputFileName = "example.dcm"
-OutputFileName = 'D:\DICOM\RTpotter_examples\example_avoidance0p5.stl'
-CountourSequenceName='Avoidance 0.5'
+InputFileName = "InputFile.dcm"
+OutputFileName = 'OutputPath\OutputFilename.stl'
+CountourSequenceName='Contour Sequence Name'
 
 
 
@@ -104,7 +104,7 @@ def distance(point1,point2):
 #**************************
 #Function findDirection, defined for three subsequent points at a given curve (with middle point having extreme coordinates among all the points at the curve) returns either True or False, depending on the curve orientation
 #True - direction "left", false - direction "right" (accordingly to numeration of points)
-def findDirection(pointa, pointb, pointc): #funkcja wyznacza direction krzywej na podstawie trzech punktow na wypuklym fragmencie brzegu
+def findDirection(pointa, pointb, pointc): 
     if ((pointb.x - pointa.x) * (pointc.y-pointa.y) - (pointc.x - pointa.x) * (pointb.y - pointa.y)) != 0:
         return ((pointb.x - pointa.x) * (pointc.y-pointa.y) - (pointc.x - pointa.x) * (pointb.y - pointa.y)) < 0
     else:
