@@ -5,4 +5,7 @@ INSTRUCTIONS FOR USE:
 - download and install Python 3.x
 - install pydicom library: in command line type: "pip install pydicom"
 - edit RTpotter source file:
+  * change the name of input DCM file - line 18
+  * change the path and filename of output STL file
+  * insert contour sequence name from the DCM file - case sensitive! must exactly match the name from RT planning system
 
