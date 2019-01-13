@@ -4,5 +4,5 @@ Open source software for conversion radiotherapy contour sequence data within DI
 INSTRUCTIONS FOR USE:
 - download and install Python 3.x
 - install pydicom library: in command line type: "pip install pydicom"
-- edit RTpotter source file 
+- edit RTpotter source file:
 
