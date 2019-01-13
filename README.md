@@ -9,3 +9,7 @@ INSTRUCTIONS FOR USE:
   * change the path and filename of output STL file
   * insert contour sequence name from the DCM file - case sensitive! must exactly match the name from RT planning system
 
+IMPORTANT REMARKS AND LIMITATIONS:
+- RTpotter is free and open-source software created for development and research purposes. It should not be used for actual medical applications! No warranty is given on the correctness of its operation, you do it at your own risk! The author takes no responsibility for inproper use of this code.
+- the software has been only tested on datasets obtained using Eclipse, Varian Treatment Planning System. It worked well for all the investigated structures. 
+- The current version is only capable of handling structures with one curve per single layer. In case if more complex geometries would be processed, they should be divided in parts fulfilling the above condition. 
