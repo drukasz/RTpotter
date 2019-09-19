@@ -157,11 +157,17 @@ ds=dicom.read_file(InputFileName)
 
 
 #STEP 2: find the specified structure in the file (ROI contour sequence with a given name):
+if not hasattr(ds, 'StructureSetROISequence'):
+    print('The specified file does not contain contour sequence data.')
+    raise NameError('There is no contour sequence data within the specified DICOM file!')
 for licz in range(len(ds.StructureSetROISequence)):
     if ds.StructureSetROISequence[licz][0x3006,0x26].value==CountourSequenceName:
         contno=licz
         break
     elif licz==len(ds.StructureSetROISequence)-1:
+        print('No such contour. Available contour names:')
+        for liczc in range(len(ds.StructureSetROISequence)):
+            print(ds.StructureSetROISequence[liczc][0x3006,0x26])
         raise NameError('There is no contour with the specified name within the specified DICOM file!')
 
 
