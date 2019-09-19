@@ -214,6 +214,10 @@ for licz1 in range(howManySlices):
         points[licz1][licz2]=point(float(ds[0x3006,0x39][contno][0x3006,0x40][licz1][0x3006,0x50][3*licz2]),float(ds[0x3006,0x39][contno][0x3006,0x40][licz1][0x3006,0x50][3*licz2+1]),float(ds[0x3006,0x39][contno][0x3006,0x40][licz1][0x3006,0x50][3*licz2+2]))
 #Sort slices accordingle to the increasing z coordinate (slices are within XY plane):
 points.sort(key=lambda x: x[0].z)
+#Update point count:
+howManyPoints=[0]*howManySlices
+for licz in range(len(points)):
+    howManyPoints[licz]=len(points[licz])  
 
 
 
