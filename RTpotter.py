@@ -1,5 +1,5 @@
-#RTpotter v.1.0
-#copyright 2016-2018 Lukasz J. Nowak
+#RTpotter v.1.1
+#copyright 2016-2021 Lukasz J. Nowak
 #
 #This program is free software: you can redistribute it and/or modify
 #it under the terms of the GNU General Public License as published by
@@ -13,6 +13,9 @@
 #
 #You should have received a copy of the GNU General Public License
 #along with this program.  If not, see <http://www.gnu.org/licenses/>
+
+#v.1.1 update:
+#Fixed error in upper/lower base surfaces discretization, which occured in some cases of concave structures. Also some minor code improvements.
 
 ##Define input parameters: input dicom filename, name of the contour sequence to be converted and name of the output STL file
 InputFileName = "InputFile.dcm"
@@ -44,12 +47,26 @@ class point:
         self.x=x
         self.y=y
         self.z=z
-	#Two points are considered equal, if all their coordinates are equal:
+#Two points are considered equal, if all their coordinates are equal:
     def __eq__(self,other):
         if self.x == other.x and self.y == other.y and self.z == other.z:
             return True
         else:
             return False
+    def __gt__(self,other):
+        if self.x > other.x:
+            return True
+        elif self.x < other.x:
+            return False
+        else:
+            if self.y > other.y:
+                return True
+            elif self.y < other.y:
+                return False
+            else:
+                raise Exception('Compared points in the given layer overlap!')
+            
+
 
 
 #*********************************
@@ -122,7 +139,14 @@ def printstl(InputFileName,facets):
     file.close()
 
 
-
+#**********************************************
+#Find point in a layer with max coordinates:
+def findMaxPointIdx(curve):
+    maxPointIdx = 0
+    for licz in range(1,len(curve)):
+        if curve[licz] > curve[maxPointIdx]:
+            maxPointIdx = licz
+    return maxPointIdx
     
 
 
@@ -394,7 +418,6 @@ for licz in range(howManySlices-1):
 direction = sliceDirections[0]  #curve orientation as set previously                  
 lowerCap = []  #memory allocation for lower base
 kd = points[0]  
-
 #duplicated points are removed:
 for pointkd in kd:
     howManykd = kd.count(pointkd)
@@ -402,56 +425,40 @@ for pointkd in kd:
         for licz in range(howManykd - 1):
             kd.remove(pointkd)
 
-licz = 0    #counter of subsequent points within the curve
-kdmark = True   #flag preventing curve twisting
-directiond = direction
-while len(kd) >= 3:     #until at least 3 points are left within the curve...
-    if findDirection(kd[licz],kd[licz+1],kd[licz+2]) == directiond:   #if we are at the convex part of curve, we create facet and remove the middle point from further considerations
-        if not directiond:    #normal versor to the lower base surface must point downwards
-            lowerCap.append(stlfacet(kd[licz],kd[licz+2],kd[licz+1]))    
+while len(kd) >= 3:  
+    maxPointIdx = findMaxPointIdx(kd)
+    if maxPointIdx < len(kd)-1:
+        if maxPointIdx > 0:
+            lowerCap.append(stlfacet(kd[maxPointIdx+1],kd[maxPointIdx],kd[maxPointIdx-1]))
         else:
-            lowerCap.append(stlfacet(kd[licz],kd[licz+1],kd[licz+2]))   
-        kd.remove(kd[licz+1])
-        kdmark = True
-    licz += 1  
-    if licz >= len(kd) - 2:
-        if not kdmark:
-            directiond = not directiond 
-        licz = 0    
-        kdmark = False  
+            lowerCap.append(stlfacet(kd[maxPointIdx+1],kd[maxPointIdx],kd[len(kd)-1]))
+    else:
+        lowerCap.append(stlfacet(kd[0],kd[maxPointIdx],kd[maxPointIdx-1]))
+    kd.remove(kd[maxPointIdx])    
     
-
-
-
+    
+    
+    
 #Next, we perform analogous processing for the upper base surface:
 upperCap = []
 kg = points[howManySlices-1]
-
 ###duplicated points are removed:
 for pointkg in kg:
     howManykg = kg.count(pointkg)
     if howManykg > 1:
         for licz in range(howManykg - 1):
             kg.remove(pointkg)
-            print('point usuniety z kapsla gornego!')
 
-licz = 0    
-kgmark = True
-directiong = direction
-while len(kg) >= 3:     #until at least 3 points are left within the curve...
-    if findDirection(kg[licz],kg[licz+1],kg[licz+2]) == directiong:   #if we are at the convex part of curve, we create facet and remove the middle point from further considerations
-        if not directiong:
-            upperCap.append(stlfacet(kg[licz],kg[licz+1],kg[licz+2]))    
+while len(kg) >= 3:  
+    maxPointIdx = findMaxPointIdx(kg)
+    if maxPointIdx < len(kg)-1:
+        if maxPointIdx > 0:
+            upperCap.append(stlfacet(kg[maxPointIdx-1],kg[maxPointIdx],kg[maxPointIdx+1]))
         else:
-            upperCap.append(stlfacet(kg[licz],kg[licz+2],kg[licz+1]))    
-        kg.remove(kg[licz+1])
-        kgmark  = True
-    licz += 1   
-    if licz >= len(kg) - 2:
-        if not kgmark:
-            directiong = not directiong  
-        licz = 0    
-        kgmark = False  
+            upperCap.append(stlfacet(kg[len(kg)-1],kg[maxPointIdx],kg[maxPointIdx+1]))
+    else:
+        upperCap.append(stlfacet(kg[maxPointIdx-1],kg[maxPointIdx],kg[0]))
+    kg.remove(kg[maxPointIdx])
 
     
         
@@ -466,4 +473,3 @@ while len(kg) >= 3:     #until at least 3 points are left within the curve...
 #STEP 11:  
 #We save the discretized structure into the STL file with the specified name, using the defined printstl function:
 printstl(OutputFileName,lowerCap + sidefacets + upperCap)
-
