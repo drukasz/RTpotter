@@ -1,4 +1,4 @@
-#RTpotter v.1.1
+#RTpotter v.1.2
 #copyright 2016-2021 Lukasz J. Nowak
 #
 #This program is free software: you can redistribute it and/or modify
@@ -17,11 +17,20 @@
 #v.1.1 update:
 #Fixed error in upper/lower base surfaces discretization, which occured in some cases of concave structures. Also some minor code improvements.
 
-##Define input parameters: input dicom filename, name of the contour sequence to be converted and name of the output STL file
-InputFileName = "InputFile.dcm"
-OutputFileName = 'OutputPath\OutputFilename.stl'
-CountourSequenceName='Contour Sequence Name'
+#v. 1.2 update:
+#The 1.1 fix did not do the job, unfortunatelly. So here comes the ultimate fix, that solves all the problems with closing complex top/bottom profiles
+#It is similar to 1.0 lower/upper cap solution, but this time for every single facet it checks if there are no other points inside the triangle.
+#I added some minor improvements as well
 
+
+
+##Define input parameters: input dicom filename, name of the contour sequence to be converted and name of the output STL file
+
+InputFileName = 'inputFile.dcm'
+CountourSequenceName='contour sequence name'
+
+#By default, the output STL file will have the same name as input DICOM. Change, if needed:
+OutputFileName = InputFileName.split('.')[0] + '.stl'
 
 
 
@@ -149,12 +158,28 @@ def findMaxPointIdx(curve):
     return maxPointIdx
     
 
+#**********************************************
+#UPDATE 1.2
+#**********************************************
+#Determine if point P is inside triangle created by T1, T2, and T3
+#Calculate barycentric coordinates of P with respect to T1, T2 and T3 and check if all are >= 0:
+def isInsideTriangle(T1,T2,T3,P):
+    lmbd1 = (((T2.y - T3.y) * (P.x - T3.x)) + ((T3.x - T2.x)*(P.y - T3.y)) ) / (((T2.y - T3.y) * (T1.x - T3.x)) + ((T3.x - T2.x) * (T1.y - T3.y)) )
+    lmbd2 = (((T3.y - T1.y) * (P.x - T3.x)) + ((T1.x - T3.x) * (P.y - T3.y)) ) / (((T2.y - T3.y) * (T1.x - T3.x)) + ((T3.x - T2.x) * (T1.y - T3.y)) )
+    lmbd3 = 1 - lmbd1 - lmbd2
+    if lmbd1 > 0 and lmbd2 > 0 and lmbd3 > 0:
+        return True
+    else:
+        return False
 
 
-
-
-
-
+#**********************************************
+#Function returning following point index in a curve:
+def nextIdx(pts,curIdx):
+    if curIdx < len(pts)-1:
+        return curIdx+1
+    else:
+        return 0
 
 
 
@@ -244,6 +269,12 @@ for licz1 in range(howManySlices):
         points[licz1][licz2]=point(float(ds[0x3006,0x39][contno][0x3006,0x40][licz1][0x3006,0x50][3*licz2]),float(ds[0x3006,0x39][contno][0x3006,0x40][licz1][0x3006,0x50][3*licz2+1]),float(ds[0x3006,0x39][contno][0x3006,0x40][licz1][0x3006,0x50][3*licz2+2]))
 #Sort slices accordingle to the increasing z coordinate (slices are within XY plane):
 points.sort(key=lambda x: x[0].z)
+#UPTADE 1.2: remove duplicated points:
+for licz in range(howManySlices):
+    bufCurv = points[licz][:]
+    for testPoint in bufCurv:
+        for liczDel in range(bufCurv.count(testPoint) - 1):
+            points[licz].remove(testPoint)
 #Update point count:
 howManyPoints=[0]*howManySlices
 for licz in range(len(points)):
@@ -314,23 +345,10 @@ for licz1 in range(howManySlices-1):
 
 #STEP 8
 #direction (i.e. points numeration relative to interior/exterior of the closed curve) of each curve is checked.  If differences between slices are found, numbering of points in non-matching curves is reversed 
-#First, an extreme point is found (the point with maximum x or xy coordinates in the curve):
-max_xy=[0]*howManySlices
-max_yi=[0]*howManySlices
-maxIndex=[0]*howManySlices    
-#point with maximum x coordinate is found:
-for licz1 in range(howManySlices): 
-    max_xy[licz1]=points[licz1][0].x    
-    max_yi[licz1]=points[licz1][0].y    
-    for licz2 in range(1,howManyPoints[licz1]):
-        if points[licz1][licz2].x > max_xy[licz1]: 
-            max_xy[licz1]=points[licz1][licz2].x
-            max_yi[licz1]=points[licz1][licz2].y
-            maxIndex[licz1]=licz2  #index of point with maximum x coordinate is stored
-        elif points[licz1][licz2].x==max_xy[licz1] and points[licz1][licz2].y > max_yi[licz1]:  #if more points have the same max x coordinate, the point with the highest y coordinate is selected among them:
-            max_xy[licz1]=points[licz1][licz2].x
-            max_yi[licz1]=points[licz1][licz2].y
-            maxIndex[licz1]=licz2  #index of the selected point is stored
+#First, an extreme point is found #UPDATE 1.2:
+maxIndex=[0]*howManySlices
+for liczCurve in range(howManySlices):
+    maxIndex[liczCurve] = findMaxPointIdx(points[liczCurve])
 
 #Now, having the extreme point, direction of each curve can be determined ("left" or "right" - directions of all curves should match each other). Three subsequent points are required (i.e. including neighbours of the extreme point):
 sliceDirections=[0]*howManySlices
@@ -414,51 +432,50 @@ for licz in range(howManySlices-1):
 
 
 #STEP 10:
+#UPDATE 1.2
 #Discretization of lower and upper base surfaces of the considered 3D structure:
-direction = sliceDirections[0]  #curve orientation as set previously                  
+directiond = sliceDirections[0]  #curve orientation as set previously                  
 lowerCap = []  #memory allocation for lower base
 kd = points[0]  
-#duplicated points are removed:
-for pointkd in kd:
-    howManykd = kd.count(pointkd)
-    if howManykd > 1:
-        for licz in range(howManykd - 1):
-            kd.remove(pointkd)
 
-while len(kd) >= 3:  
-    maxPointIdx = findMaxPointIdx(kd)
-    if maxPointIdx < len(kd)-1:
-        if maxPointIdx > 0:
-            lowerCap.append(stlfacet(kd[maxPointIdx+1],kd[maxPointIdx],kd[maxPointIdx-1]))
-        else:
-            lowerCap.append(stlfacet(kd[maxPointIdx+1],kd[maxPointIdx],kd[len(kd)-1]))
-    else:
-        lowerCap.append(stlfacet(kd[0],kd[maxPointIdx],kd[maxPointIdx-1]))
-    kd.remove(kd[maxPointIdx])    
+licz = 0    #counter of subsequent points within the curve
+while len(kd) >= 3:     #until at least 3 points are left within the curve...
+    if findDirection(kd[licz-1],kd[licz],kd[nextIdx(kd,licz)]) == directiond:   #if we are at the convex part of curve, we create facet and remove the middle point from further considerations
+        clearToClose = True
+        for testPoint in points[0]:
+            if isInsideTriangle(kd[licz-1],kd[licz],kd[nextIdx(kd,licz)],testPoint):
+                clearToClose = False
+        if clearToClose:
+            if not directiond:    #normal versor to the lower base surface must point downwards
+                lowerCap.append(stlfacet(kd[licz-1],kd[nextIdx(kd,licz)],kd[licz]))    
+            else:
+                lowerCap.append(stlfacet(kd[licz-1],kd[licz],kd[nextIdx(kd,licz)]))   
+            kd.remove(kd[licz])
+    licz = nextIdx(kd,licz) 
+   
     
     
     
     
 #Next, we perform analogous processing for the upper base surface:
-upperCap = []
-kg = points[howManySlices-1]
-###duplicated points are removed:
-for pointkg in kg:
-    howManykg = kg.count(pointkg)
-    if howManykg > 1:
-        for licz in range(howManykg - 1):
-            kg.remove(pointkg)
+directiond = sliceDirections[-1]  #curve orientation as set previously                  
+upperCap = []  #memory allocation for lower base
+kd = points[-1]  
 
-while len(kg) >= 3:  
-    maxPointIdx = findMaxPointIdx(kg)
-    if maxPointIdx < len(kg)-1:
-        if maxPointIdx > 0:
-            upperCap.append(stlfacet(kg[maxPointIdx-1],kg[maxPointIdx],kg[maxPointIdx+1]))
-        else:
-            upperCap.append(stlfacet(kg[len(kg)-1],kg[maxPointIdx],kg[maxPointIdx+1]))
-    else:
-        upperCap.append(stlfacet(kg[maxPointIdx-1],kg[maxPointIdx],kg[0]))
-    kg.remove(kg[maxPointIdx])
+licz = 0    #counter of subsequent points within the curve
+while len(kd) >= 3:     #until at least 3 points are left within the curve...
+    if findDirection(kd[licz-1],kd[licz],kd[nextIdx(kd,licz)]) == directiond:   #if we are at the convex part of curve, we create facet and remove the middle point from further considerations
+        clearToClose = True
+        for testPoint in points[-1]:
+            if isInsideTriangle(kd[licz-1],kd[licz],kd[nextIdx(kd,licz)],testPoint):
+                clearToClose = False
+        if clearToClose:
+            if not directiond:    #normal versor to the lower base surface must point downwards
+                upperCap.append(stlfacet(kd[licz-1],kd[licz],kd[nextIdx(kd,licz)]))  
+            else:
+                upperCap.append(stlfacet(kd[licz-1],kd[nextIdx(kd,licz)],kd[licz]))  
+            kd.remove(kd[licz])
+    licz = nextIdx(kd,licz)
 
     
         
