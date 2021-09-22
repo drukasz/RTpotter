@@ -1,4 +1,4 @@
-#RTpotter v.1.2
+#RTpotter v.1.3
 #copyright 2016-2021 Lukasz J. Nowak
 #
 #This program is free software: you can redistribute it and/or modify
@@ -14,18 +14,16 @@
 #You should have received a copy of the GNU General Public License
 #along with this program.  If not, see <http://www.gnu.org/licenses/>
 
-#v.1.1 update:
-#Fixed error in upper/lower base surfaces discretization, which occured in some cases of concave structures. Also some minor code improvements.
+#v.1.3 update:
+# * Solved issue which occured when multiple collinear points were present in top/bottom layer.
+# * Added selectable algorithm for closing top/bottom layers: perform a full convexity test if you need it
+#   to avoid errors in complex shapes. Otherwise, it might be much faster to skip such a test.
+#   Select by setting "clearToCloseTest" True or False.
+# * Points are now hashable.
+# * Some additional, minor improvements;
 
-#v. 1.2 update:
-#The 1.1 fix did not do the job, unfortunatelly. So here comes the ultimate fix, that solves all the problems with closing complex top/bottom profiles
-#It is similar to 1.0 lower/upper cap solution, but this time for every single facet it checks if there are no other points inside the triangle.
-#I added some minor improvements as well
 
-
-
-##Define input parameters: input dicom filename, name of the contour sequence to be converted and name of the output STL file
-
+#*********************************************INPUT PARAMETERS******************************************************************
 InputFileName = 'inputFile.dcm'
 CountourSequenceName='contour sequence name'
 
@@ -33,8 +31,11 @@ CountourSequenceName='contour sequence name'
 OutputFileName = InputFileName.split('.')[0] + '.stl'
 
 
+#Determine if you want to performe a full curve convexity test for each step during closing top/bottom layers
+#It allows to prevent errors for complex curve shapes, but significantly slows the whole process down
+clearToCloseTest = False
 
-
+#*******************************************************************************************************************************
 
 
 
@@ -74,6 +75,8 @@ class point:
                 return False
             else:
                 raise Exception('Compared points in the given layer overlap!')
+    def __hash__(self):
+        return hash(int(str(self.x).replace('.','').replace('-','9')+str(self.y).replace('.','').replace('-','9')+str(self.z).replace('.','').replace('-','9')))
             
 
 
@@ -182,8 +185,31 @@ def nextIdx(pts,curIdx):
         return 0
 
 
-
-
+#**********************************************
+#UPDATE 1.3
+#**********************************************
+#Determine if three given points are collinear:
+def arecollinear(pointa,pointb,pointc):
+    if pointa.x - pointb.x == 0:
+        if pointa.x - pointc.x == 0:
+            return True
+        else:
+            return False
+    elif pointa.x - pointc.x == 0:
+        return False
+    else:
+        if pointa.y - pointb.y == 0:
+            if pointa.y - pointc.y == 0:
+                return True
+            else:
+                return False
+        elif pointa.y - pointc.y == 0:
+            return False
+        else:
+            if (pointa.y - pointb.y) / (pointa.x - pointb.x) == (pointa.y - pointc.y) / (pointa.x - pointc.x):
+                return True
+            else:
+                return False
 
 
 
@@ -432,50 +458,95 @@ for licz in range(howManySlices-1):
 
 
 #STEP 10:
-#UPDATE 1.2
 #Discretization of lower and upper base surfaces of the considered 3D structure:
 directiond = sliceDirections[0]  #curve orientation as set previously                  
 lowerCap = []  #memory allocation for lower base
-kd = points[0]  
+kd = points[0]
 
-licz = 0    #counter of subsequent points within the curve
-while len(kd) >= 3:     #until at least 3 points are left within the curve...
-    if findDirection(kd[licz-1],kd[licz],kd[nextIdx(kd,licz)]) == directiond:   #if we are at the convex part of curve, we create facet and remove the middle point from further considerations
-        clearToClose = True
-        for testPoint in points[0]:
-            if isInsideTriangle(kd[licz-1],kd[licz],kd[nextIdx(kd,licz)],testPoint):
-                clearToClose = False
-        if clearToClose:
-            if not directiond:    #normal versor to the lower base surface must point downwards
-                lowerCap.append(stlfacet(kd[licz-1],kd[nextIdx(kd,licz)],kd[licz]))    
+#duplicated points are removed:
+kd = list(dict.fromkeys(kd))
+
+#remove collinear points:
+licz = 0
+while licz < len(kd)-2:
+    if arecollinear(kd[licz],kd[licz+1],kd[licz+2]):
+        kd.remove(kd[licz+1])
+    else:
+        licz += 1
+        
+
+if clearToCloseTest == True: #Test curve convexity at every step:
+    licz = 0    #counter of subsequent points within the curve
+    while len(kd) >= 3:     #until at least 3 points are left within the curve...
+        if findDirection(kd[licz-1],kd[licz],kd[nextIdx(kd,licz)]) == directiond:   #if we are at the convex part of curve, we create facet and remove the middle point from further considerations
+            clearToClose = True
+            for testPoint in points[0]:
+                if isInsideTriangle(kd[licz-1],kd[licz],kd[nextIdx(kd,licz)],testPoint):
+                    clearToClose = False
+            if clearToClose:
+                if not directiond:    #normal versor to the lower base surface must point downwards
+                    lowerCap.append(stlfacet(kd[licz-1],kd[nextIdx(kd,licz)],kd[licz]))    
+                else:
+                    lowerCap.append(stlfacet(kd[licz-1],kd[licz],kd[nextIdx(kd,licz)]))   
+                kd.remove(kd[licz])
+        licz = nextIdx(kd,licz)
+else:   
+    while len(kd) >= 3:  
+        maxPointIdx = findMaxPointIdx(kd)
+        if maxPointIdx < len(kd)-1:
+            if maxPointIdx > 0:
+                lowerCap.append(stlfacet(kd[maxPointIdx+1],kd[maxPointIdx],kd[maxPointIdx-1]))
             else:
-                lowerCap.append(stlfacet(kd[licz-1],kd[licz],kd[nextIdx(kd,licz)]))   
-            kd.remove(kd[licz])
-    licz = nextIdx(kd,licz) 
-   
-    
+                lowerCap.append(stlfacet(kd[maxPointIdx+1],kd[maxPointIdx],kd[len(kd)-1]))
+        else:
+            lowerCap.append(stlfacet(kd[0],kd[maxPointIdx],kd[maxPointIdx-1]))
+        kd.remove(kd[maxPointIdx])    
     
     
     
 #Next, we perform analogous processing for the upper base surface:
 directiond = sliceDirections[-1]  #curve orientation as set previously                  
 upperCap = []  #memory allocation for lower base
-kd = points[-1]  
+kd = points[-1]
 
-licz = 0    #counter of subsequent points within the curve
-while len(kd) >= 3:     #until at least 3 points are left within the curve...
-    if findDirection(kd[licz-1],kd[licz],kd[nextIdx(kd,licz)]) == directiond:   #if we are at the convex part of curve, we create facet and remove the middle point from further considerations
-        clearToClose = True
-        for testPoint in points[-1]:
-            if isInsideTriangle(kd[licz-1],kd[licz],kd[nextIdx(kd,licz)],testPoint):
-                clearToClose = False
-        if clearToClose:
-            if not directiond:    #normal versor to the lower base surface must point downwards
-                upperCap.append(stlfacet(kd[licz-1],kd[licz],kd[nextIdx(kd,licz)]))  
+#duplicated points are removed:
+kd = list(dict.fromkeys(kd))
+
+#remove collinear points:
+licz = 0
+while licz < len(kd)-2:
+    if arecollinear(kd[licz],kd[licz+1],kd[licz+2]):
+        kd.remove(kd[licz+1])
+    else:
+        licz += 1
+        
+
+if clearToCloseTest == True: #Test curve convexity at every step:
+    licz = 0    #counter of subsequent points within the curve
+    while len(kd) >= 3:     #until at least 3 points are left within the curve...
+        if findDirection(kd[licz-1],kd[licz],kd[nextIdx(kd,licz)]) == directiond:   #if we are at the convex part of curve, we create facet and remove the middle point from further considerations
+            clearToClose = True
+            for testPoint in points[-1]:
+                if isInsideTriangle(kd[licz-1],kd[licz],kd[nextIdx(kd,licz)],testPoint):
+                    clearToClose = False
+            if clearToClose:
+                if not directiond:    #normal versor to the lower base surface must point downwards
+                    upperCap.append(stlfacet(kd[licz-1],kd[licz],kd[nextIdx(kd,licz)]))  
+                else:
+                    upperCap.append(stlfacet(kd[licz-1],kd[nextIdx(kd,licz)],kd[licz]))  
+                kd.remove(kd[licz])
+        licz = nextIdx(kd,licz)
+else:   
+    while len(kd) >= 3:  
+        maxPointIdx = findMaxPointIdx(kd)
+        if maxPointIdx < len(kd)-1:
+            if maxPointIdx > 0:
+                upperCap.append(stlfacet(kd[maxPointIdx-1],kd[maxPointIdx],kd[maxPointIdx+1]))
             else:
-                upperCap.append(stlfacet(kd[licz-1],kd[nextIdx(kd,licz)],kd[licz]))  
-            kd.remove(kd[licz])
-    licz = nextIdx(kd,licz)
+                upperCap.append(stlfacet(kd[len(kd)-1],kd[maxPointIdx],kd[maxPointIdx+1]))
+        else:
+            upperCap.append(stlfacet(kd[maxPointIdx-1],kd[maxPointIdx],kd[0]))
+        kd.remove(kd[maxPointIdx])    
 
     
         
